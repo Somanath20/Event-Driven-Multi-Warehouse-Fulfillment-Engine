@@ -1,0 +1,11 @@
+package com.somanath.fulfillx.service;
+import com.somanath.fulfillx.dto.CreateOrderRequest; import com.somanath.fulfillx.event.FulfillmentEvent; import com.somanath.fulfillx.model.*; import com.somanath.fulfillx.repo.*; import org.springframework.kafka.core.KafkaTemplate; import org.springframework.stereotype.Service; import org.springframework.transaction.annotation.Transactional; import java.util.Comparator;
+@Service public class FulfillmentService{
+ private final OrderRepo orders; private final WarehouseRepo warehouses; private final KafkaTemplate<String,FulfillmentEvent> kafka;
+ public FulfillmentService(OrderRepo o,WarehouseRepo w,KafkaTemplate<String,FulfillmentEvent> k){orders=o;warehouses=w;kafka=k;}
+ @Transactional public Order create(CreateOrderRequest r){ if(orders.findByOrderNumber(r.orderNumber()).isPresent()) return orders.findByOrderNumber(r.orderNumber()).get(); Order o=orders.save(new Order(r.orderNumber(),r.sku(),r.quantity())); Warehouse w=choose(r); w.addLoad(r.quantity()); o.allocate(w.getCode()); warehouses.save(w); kafka.send("fulfillment-events",o.getOrderNumber(),new FulfillmentEvent(o.getOrderNumber(),"ALLOCATED",w.getCode())); return o; }
+ private Warehouse choose(CreateOrderRequest r){return warehouses.findAllByOrderByLoadAsc().stream().filter(w->w.canHandle(r.quantity())).min(Comparator.comparingDouble(w->score(w,r))).orElseThrow(()->new IllegalStateException("No warehouse capacity"));}
+ private double score(Warehouse w,CreateOrderRequest r){double d=Math.hypot(w.getLatitude()-r.customerLat(),w.getLongitude()-r.customerLon()); double utilization=(double)w.getLoad()/Math.max(1,w.getCapacity()); return d*0.7+utilization*100*0.3;}
+ @Transactional public Order transition(String number,Order.Status next){Order o=orders.findByOrderNumber(number).orElseThrow(); if(!valid(o.getStatus(),next)) throw new IllegalStateException("Invalid transition"); o.transition(next); kafka.send("fulfillment-events",number,new FulfillmentEvent(number,next.name(),o.getWarehouseCode())); return o;}
+ private boolean valid(Order.Status a,Order.Status b){return switch(a){case PLACED->b==Order.Status.ALLOCATED||b==Order.Status.CANCELLED;case ALLOCATED->b==Order.Status.PICKED||b==Order.Status.CANCELLED;case PICKED->b==Order.Status.PACKED;case PACKED->b==Order.Status.SHIPPED;case SHIPPED->b==Order.Status.DELIVERED;default->false;};}
+}

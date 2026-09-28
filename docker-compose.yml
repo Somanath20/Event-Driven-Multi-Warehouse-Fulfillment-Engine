@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    ports: ["8081:8081"]
+    environment: {DB_URL: jdbc:postgresql://postgres:5432/fulfillx, DB_USER: postgres, DB_PASSWORD: postgres, REDIS_HOST: redis, KAFKA_BOOTSTRAP: kafka:9092}
+    depends_on: [postgres, redis, kafka]
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_DB: fulfillx, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres}
+    ports: ["5433:5432"]
+  redis: {image: redis:7-alpine, ports: ["6380:6379"]}
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.0
+    environment: {ZOOKEEPER_CLIENT_PORT: 2181, ZOOKEEPER_TICK_TIME: 2000}
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0
+    depends_on: [zookeeper]
+    ports: ["9093:9092"]
+    environment: {KAFKA_BROKER_ID: 1, KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181, KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092, KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1, KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'}

@@ -1,0 +1,1 @@
+package com.somanath.fulfillx.dto; import jakarta.validation.constraints.*; public record CreateOrderRequest(@NotBlank String orderNumber,@NotBlank String sku,@Min(1) int quantity,double customerLat,double customerLon){}
